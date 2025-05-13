@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
+#include "memory_register.h"
 
 #define INSTR_START  0
 #define INSTR_END    1023
@@ -12,7 +13,6 @@ int next_Empty_IA = 0;
 int next_Empty_DA = 0;
 
 int32_t memory[2048];
-int32_t PC = 0;
 const int32_t R0 = 0;
 int32_t R1 = 0;
 int32_t R2 = 0;
@@ -45,4 +45,23 @@ int32_t R28 = 0;
 int32_t R29 = 0;
 int32_t R30 = 0;
 int32_t R31 = 0;
-int32_t PC = 0;
+
+void printEntireMemory() {
+    printf("\n========= MEMORY DUMP =========\n");
+    
+    // Print instruction memory region
+    printf("\nINSTRUCTION MEMORY (%d-%d):\n", INSTR_START, INSTR_END);
+    for (int i = INSTR_START; i < next_Empty_IA; i++) {
+        printf("0x%04X: 0x%08X\n", i, memory[i]);
+    }
+    
+    // Print data memory region (if used)
+    if (next_Empty_DA > DATA_START) {
+        printf("\nDATA MEMORY (%d-%d):\n", DATA_START, DATA_END);
+        for (int i = DATA_START; i < next_Empty_DA; i++) {
+            printf("0x%04X: 0x%08X\n", i, memory[i]);
+        }
+    }
+    
+    printf("\n==============================\n");
+}
