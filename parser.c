@@ -137,47 +137,46 @@ if (tokens[2]!= NULL) {
     else printf("Unknown register: %s\n", tokens[2]);
     
     // For tokens[3]
-    if (strcmp(tokens[3], "R0") == 0) strcat(binInstr, "00000");
-    else if (strcmp(tokens[3], "R1") == 0) strcat(binInstr, "00001");
-    else if (strcmp(tokens[3], "R2") == 0) strcat(binInstr, "00010");
-    else if (strcmp(tokens[3], "R3") == 0) strcat(binInstr, "00011");
-    else if (strcmp(tokens[3], "R4") == 0) strcat(binInstr, "00100");
-    else if (strcmp(tokens[3], "R5") == 0) strcat(binInstr, "00101");
-    else if (strcmp(tokens[3], "R6") == 0) strcat(binInstr, "00110");
-    else if (strcmp(tokens[3], "R7") == 0) strcat(binInstr, "00111");
-    else if (strcmp(tokens[3], "R8") == 0) strcat(binInstr, "01000");
-    else if (strcmp(tokens[3], "R9") == 0) strcat(binInstr, "01001");
-    else if (strcmp(tokens[3], "R10") == 0) strcat(binInstr, "01010");
-    else if (strcmp(tokens[3], "R11") == 0) strcat(binInstr, "01011");
-    else if (strcmp(tokens[3], "R12") == 0) strcat(binInstr, "01100");
-    else if (strcmp(tokens[3], "R13") == 0) strcat(binInstr, "01101");
-    else if (strcmp(tokens[3], "R14") == 0) strcat(binInstr, "01110");
-    else if (strcmp(tokens[3], "R15") == 0) strcat(binInstr, "01111");
-    else if (strcmp(tokens[3], "R16") == 0) strcat(binInstr, "10000");
-    else if (strcmp(tokens[3], "R17") == 0) strcat(binInstr, "10001");
-    else if (strcmp(tokens[3], "R18") == 0) strcat(binInstr, "10010");
-    else if (strcmp(tokens[3], "R19") == 0) strcat(binInstr, "10011");
-    else if (strcmp(tokens[3], "R20") == 0) strcat(binInstr, "10100");
-    else if (strcmp(tokens[3], "R21") == 0) strcat(binInstr, "10101");
-    else if (strcmp(tokens[3], "R22") == 0) strcat(binInstr, "10110");
-    else if (strcmp(tokens[3], "R23") == 0) strcat(binInstr, "10111");
-    else if (strcmp(tokens[3], "R24") == 0) strcat(binInstr, "11000");
-    else if (strcmp(tokens[3], "R25") == 0) strcat(binInstr, "11001");
-    else if (strcmp(tokens[3], "R26") == 0) strcat(binInstr, "11010");
-    else if (strcmp(tokens[3], "R27") == 0) strcat(binInstr, "11011");
-    else if (strcmp(tokens[3], "R28") == 0) strcat(binInstr, "11100");
-    else if (strcmp(tokens[3], "R29") == 0) strcat(binInstr, "11101");
-    else if (strcmp(tokens[3], "R30") == 0) strcat(binInstr, "11110");
-    else if (strcmp(tokens[3], "R31") == 0) strcat(binInstr, "11111");
-    else {
-        int addr = atoi(tokens[3]);            
-        char addrBin[19]; 
-        intToBinStr(addrBin, addr, 18);
-        strcat(binInstr, addrBin);
-    }
-}
-
-            
+    // For tokens[3]
+if (strcmp(tokens[3], "R0") == 0) {strcat(binInstr, "00000"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R1") == 0) {strcat(binInstr, "00001"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R2") == 0) {strcat(binInstr, "00010"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R3") == 0) {strcat(binInstr, "00011"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R4") == 0) {strcat(binInstr, "00100"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R5") == 0) {strcat(binInstr, "00101"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R6") == 0) {strcat(binInstr, "00110"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R7") == 0) {strcat(binInstr, "00111"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R8") == 0) {strcat(binInstr, "01000"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R9") == 0) {strcat(binInstr, "01001"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R10") == 0) {strcat(binInstr, "01010"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R11") == 0) {strcat(binInstr, "01011"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R12") == 0) {strcat(binInstr, "01100"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R13") == 0) {strcat(binInstr, "01101"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R14") == 0) {strcat(binInstr, "01110"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R15") == 0) {strcat(binInstr, "01111"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R16") == 0) {strcat(binInstr, "10000"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R17") == 0) {strcat(binInstr, "10001"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R18") == 0) {strcat(binInstr, "10010"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R19") == 0) {strcat(binInstr, "10011"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R20") == 0) {strcat(binInstr, "10100"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R21") == 0) {strcat(binInstr, "10101"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R22") == 0) {strcat(binInstr, "10110"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R23") == 0) {strcat(binInstr, "10111"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R24") == 0) {strcat(binInstr, "11000"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R25") == 0) {strcat(binInstr, "11001"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R26") == 0) {strcat(binInstr, "11010"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R27") == 0) {strcat(binInstr, "11011"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R28") == 0) {strcat(binInstr, "11100"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R29") == 0) {strcat(binInstr, "11101"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R30") == 0) {strcat(binInstr, "11110"); strcat(binInstr, "0000000000000");}
+else if (strcmp(tokens[3], "R31") == 0) {strcat(binInstr, "11111"); strcat(binInstr, "0000000000000");}
+else {
+    int addr = atoi(tokens[3]);            
+    char addrBin[19]; 
+    intToBinStr(addrBin, addr, 18);
+    strcat(binInstr, addrBin);
+}}
+       
 
 
 
