@@ -9,51 +9,72 @@ extern void printEntireMemory();
 extern int32_t memory[2048];
 extern int next_Empty_IA;
 extern int32_t PC;
+int clockCycle = 1;
+
+typedef struct{
+    int valid;
+    int instruction;
+    int pc;
+
+    int opcode;
+    int r1,r2,r3;
+    int shamt;
+    int imm;
+    int address;
+
+    int alu_result;
+    int mem_data;
+    int write_reg;
+
+    int stage_cycles;
+} Pipeline_Stage;
+
+Pipeline_Stage IF, ID, EX, MEM, WB;
 
 // Binary int format in c is 0b00000000000000000000000000000000 (32 bits)
-int opcode;
-int r1;
-int r2;
-int r3;
-int shamt;
-int imm;
-int address;
 
-
-int fetch()
+void fetch()
 {
-    int instruction = memory[PC];
-    PC++;
-    return instruction;
+    if(clockCycle%2!=0){
+        IF.instruction = memory[PC];
+        IF.pc = PC++;
+        ID = IF;
+    }
+    else{
+        return 0;
+    }
 }
 
+int32_t sign_extend_18(int32_t imm) {
+    if (imm & (1 << 17)) { // Check if bit 17 is 1 (negative number)
+        imm |= ~((1 << 18) - 1); // Fill upper bits with 1s
+    }
+    return imm;
+}
 
-void decode(int instruction)
+void decode()
 {
     // Extract the 4-bit opcode (bits 31-28)
-    opcode = (instruction >> 28) & 0xF;
-
+    ID.opcode = (ID.instruction >> 28) & 0xF;
     // R-Format: OPCODE (4), R1 (5), R2 (5), R3 (5), SHAMT (13)
-    r1 = (instruction >> 23) & 0x1F;      // bits 27-23
-    r2 = (instruction >> 18) & 0x1F;      // bits 22-18
-    r3 = (instruction >> 13) & 0x1F;      // bits 17-13
-    shamt = instruction & 0x1FFF;         // bits 12-0 (13 bits)
+    ID.r1 = (ID.instruction >> 23) & 0x1F;      // bits 27-23
+    ID.r2 = (ID.instruction >> 18) & 0x1F;      // bits 22-18
+    ID.r3 = (ID.instruction >> 13) & 0x1F;      // bits 17-13
+    ID.shamt = ID.instruction & 0x1FFF;         // bits 12-0 (13 bits)
 
     // I-Format: OPCODE (4), R1 (5), R2 (5), IMMEDIATE (18)
-    imm = instruction & 0x3FFFF;          // bits 17-0 (18 bits)
+    ID.imm = ID.instruction & 0x3FFFF; // Extract 18 bits
+    ID.imm = sign_extend_18(ID.imm);   // Sign-extend to 32 bits        // bits 17-0 (18 bits)
 
     // J-Format: OPCODE (4), ADDRESS (28)
-    address = instruction & 0xFFFFFFF;    // bits 27-0 (28 bits)
-    printf("address: %d\n", address);
-    printf("PC: %d\n", PC);
-    printf("instruction: %d\n", instruction);
-    printf("opcode: %d\n", opcode);
-    printf("r1: %d\n", r1);
-    printf("r2: %d\n", r2);
-    printf("r3: %d\n", r3);
-    printf("shamt: %d\n", shamt);
-    printf("imm: %d\n", imm);
+    ID.address = ID.instruction & 0xFFFFFFF;    // bits 27-0 (28 bits)
 
+    if(ID.stage_cycles == 1){
+        ID.stage_cycles = 0;
+        EX = ID;
+    }else{
+        ID.stage_cycles++;
+    }
 }
 
 void execute(int instruction)
