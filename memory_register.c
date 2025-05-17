@@ -37,3 +37,14 @@ int32_t safeMemoryRead(int address) {
     printf("ERROR: Memory read out of bounds: %d\n", address);
     return 0;
 }
+
+int32_t get_reg(int idx) {
+    if (idx == 0) return 0;  // R0 is always 0
+    return reg_file.R[idx];
+}
+
+void set_reg(int idx, int32_t value) {
+    if (idx == 0) return;  // R0 cannot be modified
+    reg_file.R[idx] = value;
+    printf("[set_reg] R%d = %d\n", idx, value);
+}
