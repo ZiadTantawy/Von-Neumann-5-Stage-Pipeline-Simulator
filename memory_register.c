@@ -45,6 +45,7 @@ int32_t R28 = 0;
 int32_t R29 = 0;
 int32_t R30 = 0;
 int32_t R31 = 0;
+int32_t PC = 0;
 
 void printEntireMemory() {
    /* printf("\n========= MEMORY DUMP =========\n");
