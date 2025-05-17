@@ -3,246 +3,310 @@
 #include "parser.h"
 #include "memory_register.h"
 
-// External functions from your other files
+// External functions and variables for memory and register file
 extern int ReadFile(const char *filename, int32_t *memory, int *next_free_IA);
 extern void printEntireMemory();
-extern int32_t memory[2048];
-extern int next_Empty_IA;
-extern int32_t PC;
-int clockCycle = 1;
+extern void printRegisters();
+extern int32_t memory[2048]; // Main memory: 2048 words, 32 bits each
+extern int next_Empty_IA;    // Next free instruction address
+extern int32_t PC;           // Program Counter
 
-typedef struct{
+int clockCycle = 1; // Global clock cycle counter
+
+// Pipeline stage struct: holds all information for an instruction in a pipeline stage
+// valid: is this stage active?
+// instruction: the raw 32-bit instruction
+// pc: the PC value for this instruction
+// opcode, r1, r2, r3, shamt, imm, address: decoded fields
+// alu_result, mem_data: results from ALU or memory
+// write_reg: destination register
+// stage_cycles: how many cycles spent in this stage
+typedef struct {
     int valid;
     int instruction;
     int pc;
-
-    int opcode;
-    int r1,r2,r3;
-    int shamt;
-    int imm;
-    int address;
-
-    int alu_result;
-    int mem_data;
-    int write_reg;
-
+    int opcode, r1, r2, r3, shamt, imm, address;
+    int alu_result, mem_data, write_reg;
     int stage_cycles;
 } Pipeline_Stage;
 
-Pipeline_Stage IF, ID, EX, MEM, WB;
+// Instantiate pipeline registers for each stage
+Pipeline_Stage IF = {0}, ID = {0}, EX = {0}, MEM = {0}, WB = {0};
 
-// Binary int format in c is 0b00000000000000000000000000000000 (32 bits)
-
-void fetch()
-{
-    if(clockCycle%2!=0){
-        IF.instruction = memory[PC];
-        IF.pc = PC++;
-        ID = IF;
-    }
-    else{
-        return 0;
-    }
-}
-
+// Sign-extend an 18-bit immediate to 32 bits (for I-format instructions)
 int32_t sign_extend_18(int32_t imm) {
-    if (imm & (1 << 17)) { // Check if bit 17 is 1 (negative number)
+    if (imm & (1 << 17)) { // If sign bit (bit 17) is set
         imm |= ~((1 << 18) - 1); // Fill upper bits with 1s
     }
     return imm;
 }
 
-void decode()
-{
-    // Extract the 4-bit opcode (bits 31-28)
-    ID.opcode = (ID.instruction >> 28) & 0xF;
-    // R-Format: OPCODE (4), R1 (5), R2 (5), R3 (5), SHAMT (13)
-    ID.r1 = (ID.instruction >> 23) & 0x1F;      // bits 27-23
-    ID.r2 = (ID.instruction >> 18) & 0x1F;      // bits 22-18
-    ID.r3 = (ID.instruction >> 13) & 0x1F;      // bits 17-13
-    ID.shamt = ID.instruction & 0x1FFF;         // bits 12-0 (13 bits)
-
-    // I-Format: OPCODE (4), R1 (5), R2 (5), IMMEDIATE (18)
-    ID.imm = ID.instruction & 0x3FFFF; // Extract 18 bits
-    ID.imm = sign_extend_18(ID.imm);   // Sign-extend to 32 bits        // bits 17-0 (18 bits)
-
-    // J-Format: OPCODE (4), ADDRESS (28)
-    ID.address = ID.instruction & 0xFFFFFFF;    // bits 27-0 (28 bits)
-
-    if(ID.stage_cycles == 1){
-        ID.stage_cycles = 0;
-        EX = ID;
-    }else{
-        ID.stage_cycles++;
+// Helper function for data forwarding (bypassing) in the pipeline
+int get_forwarded_value(int reg, int orig_val) {
+    // Forward from MEM stage if writing to this reg
+    if (MEM.valid && (MEM.r1 == reg) && (MEM.opcode != 11) && (MEM.opcode != 7)) {
+        if (MEM.opcode == 10) // LW
+            return MEM.mem_data;
+        else
+            return MEM.alu_result;
     }
+    // Forward from WB stage if writing to this reg
+    if (WB.valid && (WB.r1 == reg) && (WB.opcode != 11) && (WB.opcode != 7)) {
+        if (WB.opcode == 10) // LW
+            return WB.mem_data;
+        else
+            return WB.alu_result;
+    }
+    // Otherwise, use register file
+    return orig_val;
 }
 
-void execute(int instruction)
-{
-    extern const int32_t R0;
-    extern int32_t R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, R13, R14, R15;
-    extern int32_t R16, R17, R18, R19, R20, R21, R22, R23, R24, R25, R26, R27, R28, R29, R30, R31;
-    
-    // Cast the const pointer to non-const to match the array type
-    int32_t *registers[32] = {
-        (int32_t*)&R0, &R1, &R2, &R3, &R4, &R5, &R6, &R7, &R8, &R9, &R10, &R11, &R12, &R13, &R14, &R15,
-        &R16, &R17, &R18, &R19, &R20, &R21, &R22, &R23, &R24, &R25, &R26, &R27, &R28, &R29, &R30, &R31
-    };
-    decode(instruction);
+// Fetch stage: fetches the next instruction from memory using PC
+void fetch() {
+    // Fetch instruction at PC
+    IF.instruction = memory[PC];
+    IF.pc = PC;
+    IF.valid = 1;
+    IF.stage_cycles = 0;
+    PC++; // Increment PC for next fetch
+}
 
-    switch(opcode){
-        case 0:
-            // ADD
-            *registers[r1] = *registers[r2] + *registers[r3];
+// Decode stage: decodes the instruction and extracts all fields
+void decode() {
+    // Extract fields from the 32-bit instruction
+    ID.opcode = (ID.instruction >> 28) & 0xF;         // 4 bits
+    ID.r1 = (ID.instruction >> 23) & 0x1F;            // 5 bits
+    ID.r2 = (ID.instruction >> 18) & 0x1F;            // 5 bits
+    ID.r3 = (ID.instruction >> 13) & 0x1F;            // 5 bits
+    ID.shamt = ID.instruction & 0x1FFF;               // 13 bits
+    
+    // For I-format instructions, extract 18-bit immediate
+    if ((ID.opcode >= 2 && ID.opcode <= 6) || ID.opcode == 10 || ID.opcode == 11) {
+        ID.imm = ID.instruction & 0x3FFFF;            // 18 bits
+        // Sign extend if needed
+        if (ID.imm & (1 << 17)) {
+            ID.imm |= ~((1 << 18) - 1);
+        }
+    } else {
+        ID.imm = 0;
+    }
+    
+    // For J-format instructions, extract 28-bit address
+    if (ID.opcode == 7) {
+        ID.address = ID.instruction & 0xFFFFFFF;      // 28 bits
+    } else {
+        ID.address = 0;
+    }
+    
+    printf("[ID] Decoded: opcode=%d r1=%d r2=%d r3=%d shamt=%d imm=%d address=%d\n",
+           ID.opcode, ID.r1, ID.r2, ID.r3, ID.shamt, ID.imm, ID.address);
+}
+
+// Execute stage: performs the ALU operation or branch calculation
+void execute() {
+    // Use data forwarding for register operands
+    int val_r2 = get_forwarded_value(EX.r2, get_reg(EX.r2));
+    int val_r3 = get_forwarded_value(EX.r3, get_reg(EX.r3));
+    int val_r1 = get_forwarded_value(EX.r1, get_reg(EX.r1));
+    
+    // Sign extend the immediate value
+    int32_t imm = EX.imm;
+    if (imm & (1 << 17)) {  // If sign bit is set
+        imm |= ~((1 << 18) - 1);  // Sign extend
+    }
+    
+    printf("[EX] r1=%d val_r1=%d r2=%d val_r2=%d r3=%d val_r3=%d imm=%d\n", 
+           EX.r1, val_r1, EX.r2, val_r2, EX.r3, val_r3, imm);
+    
+    switch(EX.opcode) {
+        case 0: // ADD (R-format)
+            EX.alu_result = val_r2 + val_r3;
+            printf("[EX] ADD: %d + %d = %d\n", val_r2, val_r3, EX.alu_result);
             break;
-        case 1:
-            // SUB
-            *registers[r1] = *registers[r2] - *registers[r3];
+        case 1: // SUB (R-format)
+            EX.alu_result = val_r2 - val_r3;
+            printf("[EX] SUB: %d - %d = %d\n", val_r2, val_r3, EX.alu_result);
             break;
-        case 2:
-            // MULI
-            *registers[r1] = *registers[r2] * imm;
+        case 2: // MULI (I-format)
+            EX.alu_result = val_r2 * imm;
+            printf("[EX] MULI: %d * %d = %d\n", val_r2, imm, EX.alu_result);
             break;
-        case 3:
-            // ADDI
-            *registers[r1] = *registers[r2] + imm;
+        case 3: // ADDI (I-format)
+            EX.alu_result = val_r2 + imm;
+            printf("[EX] ADDI: %d + %d = %d\n", val_r2, imm, EX.alu_result);
             break;
-        case 4:
-            // BNE
-            if (*registers[r1] != *registers[r2]) {
+        case 4: // BNE (I-format)
+            if(val_r1 != val_r2) {
                 PC = PC + imm;
+                printf("[EX] BNE: %d != %d, PC = %d\n", val_r1, val_r2, PC);
             }
             break;
-        case 5:
-            // ANDI
-            *registers[r1] = *registers[r2] & imm;
+        case 5: // ANDI (I-format)
+            EX.alu_result = val_r2 & imm;
+            printf("[EX] ANDI: %d & %d = %d\n", val_r2, imm, EX.alu_result);
             break;
-        case 6:
-            // ORI
-            *registers[r1] = *registers[r2] | imm;
+        case 6: // ORI (I-format)
+            EX.alu_result = val_r2 | imm;
+            printf("[EX] ORI: %d | %d = %d\n", val_r2, imm, EX.alu_result);
             break;
-        case 7:
-            // J
-            PC = address;
+        case 7: // J (J-format)
+            PC = EX.address;
+            printf("[EX] J: PC = %d\n", PC);
             break;
-        case 8:
-            // SLL
-            *registers[r1] = *registers[r2] << shamt;
+        case 8: // SLL (R-format)
+            EX.alu_result = val_r2 << EX.shamt;
+            printf("[EX] SLL: %d << %d = %d\n", val_r2, EX.shamt, EX.alu_result);
             break;
-        case 9:
-            // SRL
-            *registers[r1] = *registers[r2] >> shamt;
+        case 9: // SRL (R-format)
+            EX.alu_result = (uint32_t)val_r2 >> EX.shamt;
+            printf("[EX] SRL: %d >> %d = %d\n", val_r2, EX.shamt, EX.alu_result);
             break;
-        case 10:
-            // LW
-            *registers[r1] = memory[*registers[r2] + imm];
+        case 10: // LW (I-format)
+            EX.alu_result = val_r2 + imm;
+            printf("[EX] LW: address = %d + %d = %d\n", val_r2, imm, EX.alu_result);
             break;
-        case 11:
-            // SW
-            memory[*registers[r2] + imm] = *registers[r1];
+        case 11: // SW (I-format)
+            EX.alu_result = val_r2 + imm;
+            printf("[EX] SW: address = %d + %d = %d\n", val_r2, imm, EX.alu_result);
             break;
     }
-
-    *((int32_t*)&R0) = 0;
 }
 
-void printState(int instruction, int oldPc) {
-    printf("\n==== EXECUTION CYCLE %d ====\n", oldPc);
-    
-    // Print the instruction being processed
-    printf("PC: %d\n", oldPc);
-    printf("Instruction: %d (0x%08X)\n", instruction, instruction);
-    
-    // Print the decoded information
-    printf("\n-- DECODE STAGE --\n");
-    printf("Opcode: %d\n", opcode);
-    
-    // Print different fields based on instruction format
-    if (opcode <= 1) {  // R-format (ADD, SUB)
-        printf("Format: R-type\n");
-        printf("r1: %d, r2: %d, r3: %d, shamt: %d\n", r1, r2, r3, shamt);
-    } 
-    else if (opcode >= 2 && opcode <= 6) {  // I-format (MULI, ADDI, BNE, ANDI, ORI)
-        printf("Format: I-type\n");
-        printf("r1: %d, r2: %d, immediate: %d\n", r1, r2, imm);
-    }
-    else if (opcode == 7) {  // J-format (J)
-        printf("Format: J-type\n");
-        printf("address: %d\n", address);
-    }
-    else if (opcode >= 8 && opcode <= 9) {  // Shift instructions (SLL, SRL)
-        printf("Format: Shift-type\n");
-        printf("r1: %d, r2: %d, shamt: %d\n", r1, r2, shamt);
-    }
-    else if (opcode >= 10 && opcode <= 11) {  // Memory instructions (LW, SW)
-        printf("Format: Memory-type\n");
-        printf("r1: %d, r2: %d, offset: %d\n", r1, r2, imm);
-    }
-    
-    // Print the operation being executed
-    printf("\n-- EXECUTE STAGE --\n");
-    switch(opcode) {
-        case 0: printf("Operation: ADD R%d, R%d, R%d\n", r1, r2, r3); break;
-        case 1: printf("Operation: SUB R%d, R%d, R%d\n", r1, r2, r3); break;
-        case 2: printf("Operation: MULI R%d, R%d, %d\n", r1, r2, imm); break;
-        case 3: printf("Operation: ADDI R%d, R%d, %d\n", r1, r2, imm); break;
-        case 4: printf("Operation: BNE R%d, R%d, %d\n", r1, r2, imm); break;
-        case 5: printf("Operation: ANDI R%d, R%d, %d\n", r1, r2, imm); break;
-        case 6: printf("Operation: ORI R%d, R%d, %d\n", r1, r2, imm); break;
-        case 7: printf("Operation: J %d\n", address); break;
-        case 8: printf("Operation: SLL R%d, R%d, %d\n", r1, r2, shamt); break;
-        case 9: printf("Operation: SRL R%d, R%d, %d\n", r1, r2, shamt); break;
-        case 10: printf("Operation: LW R%d, %d(R%d)\n", r1, imm, r2); break;
-        case 11: printf("Operation: SW R%d, %d(R%d)\n", r1, imm, r2); break;
-        default: printf("Unknown operation\n");
-    }
-    
-    // Print register values
-    printf("\n-- REGISTER VALUES --\n");
-    extern const int32_t R0;
-    extern int32_t R1, R2, R3, R4, R5, R6, R7, R8;
-    extern int32_t R9, R10, R11, R12, R13, R14, R15, R16;
-    extern int32_t R17, R18, R19, R20, R21, R22, R23, R24;
-    extern int32_t R25, R26, R27, R28, R29, R30, R31;
-    
-    printf("R0=%d, R1=%d, R2=%d, R3=%d\n", R0, R1, R2, R3);
-    printf("R4=%d, R5=%d, R6=%d, R7=%d\n", R4, R5, R6, R7);
-    printf("R8=%d, R9=%d, R10=%d, R11=%d\n", R8, R9, R10, R11);
-    printf("R12=%d, R13=%d, R14=%d, R15=%d\n", R12, R13, R14, R15);
-    printf("R16=%d, R17=%d, R18=%d, R19=%d\n", R16, R17, R18, R19);
-    printf("R20=%d, R21=%d, R22=%d, R23=%d\n", R20, R21, R22, R23);
-    printf("R24=%d, R25=%d, R26=%d, R27=%d\n", R24, R25, R26, R27);
-    printf("R28=%d, R29=%d, R30=%d, R31=%d\n", R28, R29, R30, R31);
-    
-    printf("\nNext PC: %d\n", PC);
-    printf("============================\n\n");
+// Memory stage: performs memory access for LW/SW
+void memory_access() {
+    if (MEM.opcode == 10) // LW: load from memory
+        MEM.mem_data = memory[MEM.alu_result];
+    if (MEM.opcode == 11) // SW: store to memory
+        memory[MEM.alu_result] = get_reg(MEM.r1);
 }
 
+// Write Back stage: writes result to register file if needed
+void write_back() {
+    if (!WB.valid) return;
+    
+    printf("[WB] Writing back: opcode=%d r1=%d alu_result=%d mem_data=%d\n",
+           WB.opcode, WB.r1, WB.alu_result, WB.mem_data);
+    
+    switch(WB.opcode) {
+        // For all instructions that write to a register
+        case 0: case 1: case 2: case 3: case 5: case 6: case 8: case 9:
+            printf("[WB] Writing ALU result %d to R%d\n", WB.alu_result, WB.r1);
+            set_reg(WB.r1, WB.alu_result); // Write ALU result to r1
+            break;
+        case 10: // LW: write loaded memory data to r1
+            printf("[WB] Writing memory data %d to R%d (LW)\n", WB.mem_data, WB.r1);
+            set_reg(WB.r1, WB.mem_data);
+            break;
+        // SW and J do not write to registers
+        default:
+            printf("[WB] No register write for opcode %d\n", WB.opcode);
+            break;
+    }
+}
+
+// Print the state of the pipeline and registers for debugging
+void printState() {
+    printf("\n==== CLOCK CYCLE %d ====\n", clockCycle);
+    printf("PC: %d\n", PC);
+    if (IF.valid)
+        printf("IF: Instruction 0x%08X at PC %d\n", IF.instruction, IF.pc);
+    else
+        printf("IF: -\n");
+    if (ID.valid)
+        printf("ID: Opcode %d, r1 %d, r2 %d, r3 %d, shamt %d, imm %d, address %d\n", ID.opcode, ID.r1, ID.r2, ID.r3, ID.shamt, ID.imm, ID.address);
+    else
+        printf("ID: -\n");
+    if (EX.valid)
+        printf("EX: ALU Result %d\n", EX.alu_result);
+    else
+        printf("EX: -\n");
+    if (MEM.valid)
+        printf("MEM: Mem Data %d\n", MEM.mem_data);
+    else
+        printf("MEM: -\n");
+    if (WB.valid)
+        printf("WB: Write Back Value %d\n", WB.alu_result);
+    else
+        printf("WB: -\n");
+    printf("Registers: R1=%d R2=%d R3=%d R4=%d ... R31=%d\n", get_reg(1), get_reg(2), get_reg(3), get_reg(4), get_reg(31));
+    printf("============================\n");
+}
+
+// Pipeline control: advances instructions through the pipeline according to timing rules
+void pipeline_control() {
+    // 1. Write Back: if WB stage has been active for 1 cycle, perform write back and clear
+    if (WB.valid && WB.stage_cycles == 1) {
+        write_back();
+        WB.valid = 0;
+    }
+    // 2. Memory: if MEM.valid and MEM.stage_cycles == 1, perform memory access BEFORE copying to WB
+    if (MEM.valid && MEM.stage_cycles == 1) {
+        memory_access(); // Perform memory access first
+        WB = MEM;
+        WB.valid = 1;
+        WB.stage_cycles = 0;
+        MEM.valid = 0;
+    }
+    // 3. Execute: if EX.valid and EX.stage_cycles == 2, perform execute BEFORE copying to MEM
+    if (EX.valid && EX.stage_cycles == 2) {
+        execute(); // Perform ALU operation first
+        MEM = EX;
+        MEM.valid = 1;
+        MEM.stage_cycles = 0;
+        EX.valid = 0;
+    }
+    // 4. Decode: if ID stage has been active for 2 cycles, move to EX
+    if (ID.valid && ID.stage_cycles == 2) {
+        EX = ID;
+        EX.valid = 1;
+        EX.stage_cycles = 0;
+        decode();  // Decode the instruction in EX stage
+        ID.valid = 0;
+    }
+    // 5. Fetch: only on odd cycles and if MEM is not active, fetch new instruction
+    if ((clockCycle % 2 != 0) && !MEM.valid && PC < next_Empty_IA) {
+        fetch();
+    }
+    // 6. Move pipeline registers forward (increment stage_cycles for all valid stages)
+    if (IF.valid) {
+        ID = IF;
+        ID.valid = 1;
+        ID.stage_cycles = 0;
+        IF.valid = 0;
+        decode();  // Decode as soon as instruction enters ID
+    }
+    // Increment stage cycles for all valid stages
+    if (ID.valid) ID.stage_cycles++;
+    if (EX.valid) EX.stage_cycles++;
+    if (MEM.valid) MEM.stage_cycles++;
+    if (WB.valid) WB.stage_cycles++;
+    // Debug print for pipeline stages
+    printf("[Pipeline] IF=%d ID=%d EX=%d MEM=%d WB=%d\n", IF.valid, ID.valid, EX.valid, MEM.valid, WB.valid);
+}
+
+// Main function: loads program, runs pipeline, prints state each cycle
 int main() {
-    // Initialize memory if needed
-    for (int i = 0; i < MEMORY_SIZE; i++) {
-        memory[i] = 0;
-    }
-    
-    // Set the path to your test file
+    // Initialize memory to zero
+    for (int i = 0; i < 2048; i++) memory[i] = 0;
+    PC = 0; // Start PC at 0
+    clockCycle = 1; // Start clock at 1
+    // Load program from file into memory
     const char* testFile = "test.txt";
-    
-    printf("Reading assembly from: %s\n", testFile);
-    
-    // Parse the assembly file
-    if (ReadFile(testFile, memory, &next_Empty_IA) == 0) {
-        printf("Successfully parsed %d instructions\n", next_Empty_IA);
-        
-        // Print the memory contents after parsing
-        printEntireMemory();
-        
-        printf("\nStarting program execution...\n");
-        
-            int oldPc = PC;  // Save PC before fetch increments it
-            int instruction = fetch();
-            execute(instruction);
-            printEntireMemory();
+    if (ReadFile(testFile, memory, &next_Empty_IA) != 0) {
+        printf("Error loading program\n");
+        return 1;
     }
+    // Initialize pipeline stages to inactive
+    IF.valid = ID.valid = EX.valid = MEM.valid = WB.valid = 0;
+    IF.stage_cycles = ID.stage_cycles = EX.stage_cycles = MEM.stage_cycles = WB.stage_cycles = 0;
+    printf("\nStarting program execution...\n");
+    // Main pipeline loop: run until all instructions have exited the pipeline
+    while (PC < next_Empty_IA || IF.valid || ID.valid || EX.valid || MEM.valid || WB.valid) {
+        printState();      // Print state for debugging (moved before pipeline_control)
+        pipeline_control(); // Advance pipeline
+        clockCycle++;      // Next clock cycle
+    }
+    printf("Program finished.\n");
     return 0;
 }
 
