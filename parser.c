@@ -6,6 +6,7 @@
 #include "parser.h"
 #include "memory_register.h"
 
+
 // Updated: opcode -> 4 bits
 const char* getOpcodeBinary(const char* opcode) {
     if (strcmp(opcode, "ADD") == 0)   return "0000";
@@ -32,16 +33,33 @@ void intToBinStr(char *out, int num, int bits) {
 int ReadFile(const char *filename, int32_t *memory, int *next_free_IA) {
     FILE *fp = fopen(filename, "r");
     if (!fp) {
-        printf("Error opening %s\n", filename);
+        printf("Error: Could not open file %s\n", filename);
         return 1;
     }
 
     char line[256];
-    while (fgets(line, sizeof(line), fp)) {
-        if (line[0] == '\n' || line[0] == '#' || strlen(line) <= 1)
-            continue;
+    *next_free_IA = 0;
 
-        line[strcspn(line, "\r\n")] = 0;  // remove newline
+    while (fgets(line, sizeof(line), fp)) {
+        // Skip empty lines and comments
+        if (line[0] == '\n' || line[0] == '#' || line[0] == ';' || line[0] == '/') {
+            continue;
+        }
+        
+        // Remove trailing comments
+        char *comment = strchr(line, '#');
+        if (comment) *comment = '\0';
+        
+        // Trim trailing whitespace
+        int len = strlen(line);
+        while (len > 0 && isspace(line[len-1])) {
+            line[--len] = '\0';
+        }
+        
+        // Skip if line is empty after removing comments
+        if (strlen(line) == 0) {
+            continue;
+        }
 
         char *tokens[5];
         int tokenCount = 0;
@@ -134,7 +152,18 @@ if (tokens[2]!= NULL) {
     else if (strcmp(tokens[2], "R29") == 0) strcat(binInstr, "11101");
     else if (strcmp(tokens[2], "R30") == 0) strcat(binInstr, "11110");
     else if (strcmp(tokens[2], "R31") == 0) strcat(binInstr, "11111");
-    else printf("Unknown register: %s\n", tokens[2]);
+    else {
+        // Add proper error checking for non-register values
+        if (tokens[2][0] == 'R') {
+            printf("Unknown register: %s\n", tokens[2]);
+        } else {
+            // Handle immediate value
+            int imm = atoi(tokens[2]);            
+            char immBin[19]; 
+            intToBinStr(immBin, imm, 18);
+            strcat(binInstr, immBin);
+        }
+    }
     
     // For tokens[3]
     // For tokens[3]
@@ -181,7 +210,17 @@ else {
 
 
         // Convert binary string to signed int
-        int32_t instrValue = (int32_t)strtol(binInstr, NULL, 2);
+        int32_t instrValue = 0;
+        for (int i = 0; i < 32; i++) {
+            if (binInstr[i] == '1') {
+                instrValue |= (1 << (31 - i));
+            }
+        }
+
+        // Debug output to verify instruction encoding
+        printf("Encoded instruction: 0x%08X\n", instrValue);
+
+        // Store in memory
         memory[*next_free_IA] = instrValue;
         (*next_free_IA)++;
     }
