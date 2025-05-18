@@ -6,6 +6,7 @@ int32_t memory[MEMORY_SIZE] = {0};
 int next_Empty_IA = 0;
 int next_Empty_DA = 0;
 
+//memory dump at the end of the program
 void printEntireMemory(void) {
     printf("\n========= MEMORY DUMP =========\n");
     printf("\nINSTRUCTION MEMORY (%d-%d):\n", INSTR_START, INSTR_END);
@@ -21,23 +22,7 @@ void printEntireMemory(void) {
     }
     printf("\n==============================\n");
 }
-
-void safeMemoryWrite(int address, int32_t value) {
-    if (address >= 0 && address < MEMORY_SIZE) {
-        memory[address] = value;
-    } else {
-        printf("ERROR: Memory write out of bounds: %d\n", address);
-    }
-}
-
-int32_t safeMemoryRead(int address) {
-    if (address >= 0 && address < MEMORY_SIZE) {
-        return memory[address];
-    }
-    printf("ERROR: Memory read out of bounds: %d\n", address);
-    return 0;
-}
-
+ 
 int32_t get_reg(int idx) {
     if (idx == 0) return 0;  // R0 is always 0
     return reg_file.R[idx];

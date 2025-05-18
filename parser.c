@@ -7,7 +7,7 @@
 #include "memory_register.h"
 
 
-// Updated: opcode -> 4 bits
+// opcodes to binary
 const char* getOpcodeBinary(const char* opcode) {
     if (strcmp(opcode, "ADD") == 0)   return "0000";
     if (strcmp(opcode, "SUB") == 0)   return "0001";
@@ -24,6 +24,7 @@ const char* getOpcodeBinary(const char* opcode) {
     return NULL;
 }
 
+// convert integer to binary string
 void intToBinStr(char *out, int num, int bits) {
     for (int i = bits - 1; i >= 0; i--)
         out[bits - 1 - i] = ((num >> i) & 1) ? '1' : '0';
@@ -78,7 +79,7 @@ int ReadFile(const char *filename, int32_t *memory, int *next_free_IA) {
         char binInstr[33] = {0}; // Instruction string
         strcat(binInstr, opcodeBin); // Add opcode (4 bits)
 
-        // For tokens[1]
+        // concatinate register to binary instruction
 if (strcmp(tokens[1], "R0") == 0) strcat(binInstr, "00000");
 else if (strcmp(tokens[1], "R1") == 0) strcat(binInstr, "00001");
 else if (strcmp(tokens[1], "R2") == 0) strcat(binInstr, "00010");

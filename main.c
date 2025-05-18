@@ -13,13 +13,13 @@ typedef struct {
     int stage_cycles;
 } PipelineStage;
 
-// Declare stages
+// Declare kol el stages
 PipelineStage IF = {0}, ID = {0}, EX = {0}, MEM = {0}, WB = {0};
 
 int clockCycle = 1;
 int32_t PC = 0;
 
-// Mapping opcode to mnemonic
+// Mapping opcode to mnemonic for better printing
 const char* opcode_names[] = {
     "ADD", "SUB", "MULI", "ADDI", "BNE", "ANDI",
     "ORI", "J", "SLL", "SRL", "LW", "SW"
@@ -31,7 +31,7 @@ int32_t sign_extend_18(int32_t imm) {
     return imm;
 }
 
-// Forward value from later pipeline stages if available
+// Forward value from later pipeline stages if available -- handling hazards (preventing stalls)
 int32_t get_forwarded_value(int reg, int32_t orig_val) {
     if (MEM.valid && MEM.r1 == reg && MEM.opcode != 11 && MEM.opcode != 7)
         return (MEM.opcode == 10) ? MEM.mem_data : MEM.alu_result;
@@ -40,7 +40,7 @@ int32_t get_forwarded_value(int reg, int32_t orig_val) {
     return orig_val;
 }
 
-// Fetch instruction from memory
+// Fetch kol instruction from memory
 void fetch() {
     IF.instruction = memory[PC];
     IF.pc = PC;
@@ -48,7 +48,7 @@ void fetch() {
     PC++;
 }
 
-// Decode instruction fields
+// Decode kol el instruction fields
 void decode_instruction(PipelineStage* stage) {
     int inst = stage->instruction;
     stage->opcode = (inst >> 28) & 0xF;
@@ -83,18 +83,24 @@ void execute() {
                 printf("[EX] MULI: R%d = %d * %d = %d\n", EX.r1, v2, imm, EX.alu_result); break;
         case 3: EX.alu_result = v2 + imm;
                 printf("[EX] ADDI: R%d = %d + %d = %d\n", EX.r1, v2, imm, EX.alu_result); break;
-        case 4: if (v1 != v2) {
-                    PC += imm;
-                    printf("[EX] BNE: %d != %d → PC += %d → PC = %d\n", v1, v2, imm, PC);
-                } else {
-                    printf("[EX] BNE: %d == %d → no branch\n", v1, v2);
-                }
-                break;
+        case 4: 
+            if (v1 != v2) {
+                int old_pc = PC;
+                PC = EX.pc + 1 + imm;
+                IF.valid = 0;
+                ID.valid = 0;
+                printf("[EX] BNE: %d != %d → PC = %d + 1 + %d = %d (was %d)\n", v1, v2, EX.pc, imm, PC, old_pc);
+            } else {
+                printf("[EX] BNE: %d == %d → no branch\n", v1, v2);
+            }
+            break;
         case 5: EX.alu_result = v2 & imm;
                 printf("[EX] ANDI: R%d = %d & %d = %d\n", EX.r1, v2, imm, EX.alu_result); break;
         case 6: EX.alu_result = v2 | imm;
                 printf("[EX] ORI: R%d = %d | %d = %d\n", EX.r1, v2, imm, EX.alu_result); break;
         case 7: PC = EX.address;
+                IF.valid = 0;
+                ID.valid = 0;
                 printf("[EX] JUMP: PC = %d\n", PC); break;
         case 8: EX.alu_result = v2 << sh;
                 printf("[EX] SLL: R%d = %d << %d = %d\n", EX.r1, v2, sh, EX.alu_result); break;
@@ -107,7 +113,7 @@ void execute() {
     }
 }
 
-// Perform memory read/write
+// Perform memory read/write 
 void memory_access() {
     if (MEM.opcode == 10) {
         MEM.mem_data = memory[MEM.alu_result];
@@ -139,12 +145,12 @@ void write_back() {
     }
 }
 
-// Stage-by-stage status printer
+// Stage-by-stage status printer display kol el stages
 void print_pipeline() {
     printf("\n=== Cycle %d ===\n", clockCycle);
     printf("PC = %d\n", PC);
 
-    if (IF.valid) printf("IF: Fetched 0x%08X @ PC=%d\n", IF.instruction, IF.pc);
+    if (IF.valid) printf("IF: Fetched 0x%08X (%s) @ PC=%d\n", IF.instruction, opcode_names[(IF.instruction >> 28) & 0xF], IF.pc);
     else printf("IF: -\n");
 
     if (ID.valid) printf("ID: opcode=%d (%s) r1=R%d r2=R%d r3=R%d imm=%d\n",
@@ -200,9 +206,8 @@ void advance_pipeline() {
     }
 
     if ((clockCycle - 1) % 2 == 0 && PC < next_Empty_IA) {
-    fetch();
-}
-
+        fetch();
+    }
 
     if (ID.valid) ID.stage_cycles++;
     if (EX.valid) EX.stage_cycles++;
@@ -223,13 +228,21 @@ int main() {
 
     printf("\nStarting simulation...\n");
 
+    int lastPrintedCycle = 0;
     while (PC < next_Empty_IA || IF.valid || ID.valid || EX.valid || MEM.valid || WB.valid) {
-        print_pipeline();
         advance_pipeline();
+        if (PC < next_Empty_IA || IF.valid || ID.valid || EX.valid || MEM.valid || WB.valid) {
+            print_pipeline();
+            lastPrintedCycle = clockCycle;
+        }
         clockCycle++;
     }
-
-    printf("\nExecution complete in %d cycles\n", clockCycle - 1);
+    printf("\nExecution complete in %d cycles\n", lastPrintedCycle);
     printEntireMemory();
+    printf("\n========= REGISTER FILE =========\n");
+    for (int i = 0; i < 32; i++) {
+        printf("R%-2d = %d\n", i, get_reg(i));
+    }
+    printf("===============================\n");
     return 0;
 }
